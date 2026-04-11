@@ -1,0 +1,25 @@
+{
+  "name": "sample-app",
+  "version": "1.0.0",
+  "description": "A minimal PWA that merges a one-line daily diary (LifeLog) with 1‑minute daily challenges (MicroHabit).",
+  "main": "service-worker.js",
+  "scripts": {
+    "build-css": "tailwindcss -i ./assets/css/main.css -o ./assets/css/output.css --minify",
+    "watch-css": "tailwindcss -i ./assets/css/main.css -o ./assets/css/output.css --watch",
+    "deploy:firestore": "firebase deploy --only firestore:rules",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "autoprefixer": "^10.4.23",
+    "playwright": "^1.58.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "node-fetch": "^3.3.2"
+  }
+}

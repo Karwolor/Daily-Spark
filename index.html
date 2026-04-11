@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DailySpark</title>
+  <meta name="theme-color" content="#0ea5e9" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- TailwindCSS (built) -->
+  <link rel="stylesheet" href="/assets/css/output.css">
+  <!-- Alpine.js for lightweight interactivity -->
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <!-- Day.js for dates -->
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+  <!-- Chart.js for charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- html2canvas for export as image -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <!-- Stripe for monetization -->
+  <script src="https://js.stripe.com/v3/"></script>
+
+  <!-- Firebase & App Scripts -->
+  <script src="/assets/js/firebase.js" defer></script>
+  <script src="/assets/js/ai.js" defer></script>
+  <script src="/assets/js/app.js" defer></script>
+
+  <style>
+    /* Minimal safe area support */
+    :root {
+      --safe-top: env(safe-area-inset-top);
+      --safe-bottom: env(safe-area-inset-bottom);
+      /* Theme colors - can be changed by premium theme selector */
+      --color-primary: #0ea5e9;
+      --color-secondary: #06b6d4;
+      --color-accent: #0369a1;
+    }
+    [x-cloak] { display: none; }
+  </style>
+</head>
+<body class="h-full bg-gradient-to-br from-blue-50 via-white to-indigo-50 text-slate-900" x-data="appState()" x-init="init()">
+  <div class="max-w-sm sm:max-w-xl lg:max-w-4xl mx-auto h-full flex flex-col">
+    <!-- Header -->
+    <header class="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-200 px-4 pt-[var(--safe-top)]">
+      <div class="flex items-center justify-between h-14 sm:h-16">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-gradient-to-br from-sky-500 to-emerald-500 rounded-lg flex items-center justify-center">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+          </div>
+          <h1 class="text-lg font-bold text-slate-800">DailySpark</h1>
+        </div>
+        <div class="flex items-center gap-1 sm:gap-2">
+          <template x-if="!isPremium">
+            <button class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-md bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs sm:text-sm font-medium shadow-sm" @click="showPremiumModal = true">⭐ Upgrade</button>
+          </template>
+          <template x-if="!user">
+            <div class="relative" x-data="{ showLoginMenu: false }">
+              <button class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-md border border-slate-300 text-xs sm:text-sm hover:bg-slate-50 transition-colors" @click="showLoginMenu = !showLoginMenu">Sign In</button>
+              <div x-show="showLoginMenu" @click.away="showLoginMenu = false" class="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 z-10">
+                <div class="py-1">
+                  <button class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" @click="signInAnon(); showLoginMenu = false">Continue as Guest</button>
+                  <button class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" @click="signInWithGoogle(); showLoginMenu = false">Sign in with Google</button>
+                  <button class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" @click="signInWithEmail(); showLoginMenu = false">Sign in with Email</button>
+                  <button class="block w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" @click="signUpWithEmail(); showLoginMenu = false">Create Account</button>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template x-if="user">
+            <button class="p-1.5 sm:p-2 rounded-md border border-slate-300 hover:bg-slate-50 transition-colors" @click="signOut()" title="Sign out">
+              <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+              </svg>
+            </button>
+          </template>
+        </div>
+      </div>
+    </header>
+
+  <!-- Global toast for errors/info -->
+  <div x-show="showToast" x-cloak class="fixed left-1/2 transform -translate-x-1/2 top-16 z-50">
+    <div :class="toastType === 'error' ? 'bg-red-600 text-white' : (toastType === 'warning' ? 'bg-yellow-500 text-black' : 'bg-sky-600 text-white')" class="px-4 py-2 rounded-lg shadow-md">
+      <div class="flex items-center gap-3">
+        <div class="text-sm" x-text="toastMessage"></div>
+        <button class="ml-3 text-xs opacity-80" @click="showToast = false">Dismiss</button>
+      </div>
+    </div>
+  </div>
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-20 sm:pb-24" x-cloak>
+      <!-- Journal -->
+      <section x-show="activeTab==='Journal'" class="space-y-6">
+        <div class="p-4 sm:p-6 bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-white/30">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 bg-sky-100 rounded-full flex items-center justify-center">
+              <svg class="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+              </svg>
+            </div>
+            <h2 class="text-xl font-semibold text-slate-800">Today's Journal</h2>
+          </div>
+          <p class="text-sm text-slate-600 mb-4" x-text="todayLabel"></p>
+          <textarea x-model="logText" @keydown.enter.prevent="saveLog()" class="w-full p-4 border-0 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 transition-all resize-none" rows="4" placeholder="Write one meaningful sentence about your day..."></textarea>
+          <div class="flex items-center justify-between mt-4">
+            <div class="text-xs text-slate-500"><span x-text="remaining"></span> characters remaining</div>
+            <div class="flex gap-3">
+              <button class="px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed" @click="analyzeMood()" :disabled="!logText || analyzing">
+                <span x-show="!analyzing">Analyze Mood</span>
+                <span x-show="analyzing" class="flex items-center gap-2">
+                  <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Analyzing...
+                </span>
+              </button>
+              <button class="px-6 py-2 rounded-lg bg-sky-600 text-white hover:bg-sky-700 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed" @click="saveLog()" :disabled="!logText || saving">
+                <span x-show="!saving">Save Entry</span>
+                <span x-show="saving" class="flex items-center gap-2">
+                  <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Saving...
+                </span>
+              </button>
+            </div>
+          </div>
+          <template x-if="mood">
+            <div class="mt-4 p-3 bg-gradient-to-r from-sky-50 to-indigo-50 rounded-lg border border-sky-200">
+              <div class="flex items-center gap-2">
+                <span class="text-2xl" x-text="getMoodEmoji(mood)"></span>
+                <div>
+                  <div class="font-medium text-slate-800" x-text="mood.label"></div>
+                  <div class="text-sm text-slate-600">Confidence: <span x-text="Math.round(mood.score * 100)"></span>%</div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="p-6 bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-white/30">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+              <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-slate-800">Recent Entries</h3>
+          </div>
+          <ul class="space-y-3">
+            <template x-for="item in recentLogs" :key="item.id">
+              <li class="p-4 bg-slate-50 rounded-lg hover:bg-white transition-colors border border-slate-100 group">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="text-xs text-slate-500 mb-1"><span x-text="item.date"></span></div>
+                    <div class="text-slate-800" x-text="item.text"></div>
+                  </div>
+                  <div class="flex items-center gap-3 ml-2 flex-shrink-0">
+                    <template x-if="item.mood">
+                      <span class="text-lg" x-text="getMoodEmoji(item.mood)"></span>
+                    </template>
+                    <button class="p-1.5 text-red-500 hover:bg-red-100 rounded-md transition-colors hover:scale-110" @click.prevent.stop="deleteLog(item.id)" type="button" title="Delete entry">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Spark -->
+      <section x-show="activeTab==='Spark'" class="space-y-6">
+        <div class="p-4 sm:p-6 bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-white/30">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+              <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+              </svg>
+            </div>
+            <h2 class="text-xl font-semibold text-slate-800">Today's Spark Challenge</h2>
+          </div>
+          
+          <div class="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-xl border border-emerald-200">
+            <template x-if="!challenge.text">
+              <div class="text-center py-8">
+                <div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                  </svg>
+                </div>
+                <p class="text-slate-700 font-medium mb-6">Ready for a tiny spark of inspiration? 💫</p>
+                <style>
+                  @keyframes walk { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(15px); } }
+                  @keyframes breathe { 0%, 100% { r: 20; } 50% { r: 28; } }
+                  @keyframes breathe-bg { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.1; } }
+                  @keyframes stretch { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.2); } }
+                  @keyframes ring { 0%, 100% { transform: rotate(0deg); } 10%, 20% { transform: rotate(-12deg); } 15%, 25% { transform: rotate(12deg); } }
+                  .walk-svg { animation: walk 1.5s infinite ease-in-out; }
+                  .breathe-svg circle:nth-child(1) { animation: breathe 3s infinite ease-in-out; }
+                  .breathe-svg circle:nth-child(2) { animation: breathe-bg 3s infinite ease-in-out; }
+                  .stretch-svg { animation: stretch 1.5s infinite ease-in-out; transform-origin: center 25%; }
+                  .phone-svg { animation: ring 1.5s infinite cubic-bezier(0.68, -0.55, 0.265, 1.55); transform-origin: center; }
+                </style>
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="flex flex-col items-center p-3 bg-white rounded-lg border border-emerald-200">
+                    <svg class="w-12 h-12 mb-2" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                      <g class="walk-svg"><circle cx="30" cy="15" r="5" fill="#10b981"></circle><path d="M30 20 L30 35" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M30 25 L20 30" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M30 25 L40 30" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M30 35 L22 50" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M30 35 L38 50" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path></g>
+                    </svg>
+                    <span class="text-xs text-slate-700 font-medium">Walk</span>
+                  </div>
+                  <div class="flex flex-col items-center p-3 bg-white rounded-lg border border-emerald-200">
+                    <svg class="w-12 h-12 mb-2" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                      <g class="drink-svg"><path d="M25 30 L30 50 L70 50 L75 30 Z" fill="none" stroke="#10b981" stroke-width="2"></path><path d="M30 50 L70 50 L65 70 Q50 75 35 70 Z" fill="#60a5fa" opacity="0.6"></path></g>
+                    </svg>
+                    <span class="text-xs text-slate-700 font-medium">Drink</span>
+                  </div>
+                  <div class="flex flex-col items-center p-3 bg-white rounded-lg border border-emerald-200">
+                    <svg class="w-12 h-12 mb-2" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                      <g class="stretch-svg"><circle cx="50" cy="20" r="5" fill="#10b981"></circle><path d="M50 25 L50 40" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M50 28 L25 15" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M50 28 L75 15" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M50 40 L40 60" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path><path d="M50 40 L60 60" stroke="#10b981" stroke-width="2" stroke-linecap="round"></path></g>
+                    </svg>
+                    <span class="text-xs text-slate-700 font-medium">Stretch</span>
+                  </div>
+                  <div class="flex flex-col items-center p-3 bg-white rounded-lg border border-emerald-200">
+                    <svg class="w-12 h-12 mb-2" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                      <g class="breathe-svg"><circle cx="50" cy="50" r="20" fill="none" stroke="#10b981" stroke-width="2"></circle><circle cx="50" cy="50" r="15" fill="#10b981" opacity="0.3"></circle><text x="50" y="58" text-anchor="middle" font-size="16" fill="#10b981" font-weight="bold">∞</text></g>
+                    </svg>
+                    <span class="text-xs text-slate-700 font-medium">Breathe</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template x-if="challenge.text">
+              <div class="text-center">
+                <div class="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                  </svg>
+                </div>
+                <p class="text-lg text-slate-800 font-medium mb-4" x-text="challenge.text"></p>
+                <!-- Animated demos based on challenge type -->
+                <div class="bg-white rounded-lg p-6 mb-4 border border-emerald-100">
+                  <style>
+                    @keyframes demo-breathe { 0%, 100% { r: 25; opacity: 0.8; } 50% { r: 38; opacity: 0.3; } }
+                    @keyframes demo-walk { 0%, 100% { transform: translateX(-20px); } 50% { transform: translateX(20px); } }
+                    @keyframes demo-stretch-anim { 0%, 100% { transform: scaleY(0.9); } 50% { transform: scaleY(1.3); } }
+                    @keyframes demo-jump { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-25px); } }
+                    @keyframes demo-drink { 0%, 100% { transform: translateY(0) rotateZ(0deg); } 50% { transform: translateY(-10px) rotateZ(30deg); } }
+                    @keyframes demo-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                    .demo-breathe-circle { animation: demo-breathe 4s infinite ease-in-out; }
+                    .demo-walk-fig { animation: demo-walk 2s infinite ease-in-out; }
+                    .demo-stretch-fig { animation: demo-stretch-anim 2s infinite ease-in-out; transform-origin: 50% 30%; }
+                    .demo-jump-fig { animation: demo-jump 1.5s infinite ease-in-out; }
+                    .demo-drink-fig { animation: demo-drink 2s infinite ease-in-out; transform-origin: 50% 20%; }
+                    .demo-smile-fig { animation: demo-spin 3s infinite linear; }
+                  </style>
+                  
+                  <!-- Breathe animation -->
+                  <svg x-show="getChallengeType() === 'breathe'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g>
+                      <circle cx="50" cy="50" r="20" fill="none" stroke="#10b981" stroke-width="2"></circle>
+                      <circle cx="50" cy="50" r="15" fill="#10b981" opacity="0.3"></circle>
+                      <text x="50" y="58" text-anchor="middle" font-size="18" fill="#10b981" font-weight="bold">∞</text>
+                      <circle cx="50" cy="50" r="25" fill="none" stroke="#60a5fa" stroke-width="1.5" opacity="0.5" class="demo-breathe-circle"></circle>
+                    </g>
+                  </svg>
+                  
+                  <!-- Walk animation -->
+                  <svg x-show="getChallengeType() === 'walk'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g class="demo-walk-fig">
+                      <circle cx="50" cy="20" r="6" fill="#10b981"></circle>
+                      <path d="M50 26 L50 42" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 30 L35 22" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 30 L65 22" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 42 L38 58" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 42 L62 58" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                    </g>
+                  </svg>
+                  
+                  <!-- Stretch animation -->
+                  <svg x-show="getChallengeType() === 'stretch'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g class="demo-stretch-fig">
+                      <circle cx="50" cy="18" r="5" fill="#10b981"></circle>
+                      <path d="M50 23 L50 38" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 26 L20 12" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 26 L80 12" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 38 L40 60" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 38 L60 60" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                    </g>
+                  </svg>
+                  
+                  <!-- Jump animation -->
+                  <svg x-show="getChallengeType() === 'jump'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g class="demo-jump-fig">
+                      <circle cx="50" cy="28" r="6" fill="#10b981"></circle>
+                      <path d="M50 34 L50 48" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 38 L35 32" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 38 L65 32" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 48 L42 65" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 48 L58 65" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                    </g>
+                  </svg>
+                  
+                  <!-- Drink animation -->
+                  <svg x-show="getChallengeType() === 'drink'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g class="demo-drink-fig">
+                      <path d="M30 25 L35 50 L65 50 L70 25 Z" fill="none" stroke="#10b981" stroke-width="2"></path>
+                      <path d="M35 50 L65 50 L62 68 Q50 72 38 68 Z" fill="#60a5fa" opacity="0.6"></path>
+                      <circle cx="45" cy="15" r="4" fill="#10b981"></circle>
+                      <path d="M45 19 L45 25"></path>
+                    </g>
+                  </svg>
+                  
+                  <!-- Smile animation -->
+                  <svg x-show="getChallengeType() === 'smile'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g class="demo-smile-fig">
+                      <circle cx="50" cy="50" r="18" fill="none" stroke="#10b981" stroke-width="2"></circle>
+                      <circle cx="44" cy="45" r="2.5" fill="#10b981"></circle>
+                      <circle cx="56" cy="45" r="2.5" fill="#10b981"></circle>
+                      <path d="M44 55 Q50 60 56 55" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none"></path>
+                    </g>
+                  </svg>
+                  
+                  <!-- Default animation (call) -->
+                  <svg x-show="getChallengeType() === 'call' || getChallengeType() === 'default'" class="w-32 h-32 mx-auto" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <g class="demo-walk-fig">
+                      <circle cx="50" cy="20" r="6" fill="#10b981"></circle>
+                      <path d="M50 26 L50 42" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 30 L35 22" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 30 L65 22" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 42 L38 58" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                      <path d="M50 42 L62 58" stroke="#10b981" stroke-width="2.5" stroke-linecap="round"></path>
+                    </g>
+                  </svg>
+                </div>
+              </div>
+            </template>
+            
+            <div class="flex gap-3 justify-center">
+              <button class="px-6 py-3 rounded-lg border border-emerald-300 hover:bg-emerald-50 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed" @click="generateChallenge()" :disabled="generating">
+                <span x-show="!generating" class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                  </svg>
+                  Generate
+                </span>
+                <span x-show="generating" class="flex items-center gap-2">
+                  <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating...
+                </span>
+              </button>
+              <button class="px-6 py-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="!challenge.text" @click="completeChallenge()">
+                <span class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                  Mark Done
+                </span>
+              </button>
+            </div>
+          </div>
+          
+          <template x-if="challenge.done">
+            <div class="mt-4 p-4 bg-emerald-100 border border-emerald-300 rounded-lg animate-pulse">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div class="font-medium text-emerald-800">Challenge Completed! 🎉</div>
+                  <div class="text-sm text-emerald-700">Keep the spark alive tomorrow.</div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <!-- Progress -->
+      <section x-show="activeTab==='Progress'" class="space-y-6">
+        <div class="p-4 sm:p-6 bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-white/30">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+              <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+            </div>
+            <h2 class="text-xl font-semibold text-slate-800">Your Progress</h2>
+          </div>
+          
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="p-6 bg-slate-50 rounded-xl border border-slate-200">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"></path>
+                  </svg>
+                </div>
+                <h3 class="font-semibold text-slate-800">Journal Streak</h3>
+              </div>
+              <canvas id="streakChart" height="120" class="w-full"></canvas>
+            </div>
+            
+            <div class="p-6 bg-slate-50 rounded-xl border border-slate-200">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                  </svg>
+                </div>
+                <h3 class="font-semibold text-slate-800">Monthly Summary</h3>
+              </div>
+              <button class="w-full px-4 py-3 rounded-lg border border-slate-300 hover:bg-slate-100 transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed mb-4" @click="summarizeMonth()" :disabled="summarizing">
+                <span x-show="!summarizing" class="flex items-center justify-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                  Generate Summary
+                </span>
+                <span x-show="summarizing" class="flex items-center justify-center gap-2">
+                  <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Analyzing...
+                </span>
+              </button>
+              <div class="bg-white rounded-lg border border-slate-200 p-4 min-h-[100px]">
+                <p x-text="monthSummary" class="text-sm text-slate-700 whitespace-pre-line"></p>
+                <template x-if="!monthSummary">
+                  <p class="text-slate-500 text-sm italic">Click generate to see your monthly insights</p>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Share -->
+      <section x-show="activeTab==='Share'" class="space-y-6">
+        <!-- Year in Review (Premium) -->
+        <template x-if="isPremium">
+          <div class="p-4 sm:p-6 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl shadow-xl border-2 border-yellow-300">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-semibold text-yellow-900">Year in Review</h3>
+              <span class="ml-auto text-xs bg-yellow-500 text-white px-3 py-1 rounded-full font-semibold">⭐ PREMIUM</span>
+            </div>
+            <div class="bg-white rounded-lg p-4 border border-yellow-200">
+              <p class="text-slate-800 font-medium" x-text="yearInReview"></p>
+            </div>
+          </div>
+        </template>
+        
+        <div class="p-4 sm:p-6 bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-white/30">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
+              <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
+              </svg>
+            </div>
+            <h2 class="text-xl font-semibold text-slate-800">Share Your Progress</h2>
+          </div>
+          
+          <div id="share-card" class="bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 p-8 rounded-2xl border border-rose-200 shadow-inner">
+            <div class="text-center">
+              <div class="w-16 h-16 bg-gradient-to-br from-rose-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+              </div>
+              <div class="text-rose-600 font-bold text-xl mb-2">DailySpark</div>
+              <div class="text-3xl font-bold text-slate-800 mb-2" x-text="shareTitle"></div>
+              <div class="text-lg text-slate-700" x-text="shareSubtitle"></div>
+            </div>
+          </div>
+          
+          <div class="flex gap-3">
+            <button class="flex-1 px-6 py-4 rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-all hover:scale-105 font-medium" @click="exportShareCard()">
+              <span class="flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                Export as Image
+              </span>
+            </button>
+            <button class="px-6 py-4 rounded-xl border border-rose-300 hover:bg-rose-50 transition-all hover:scale-105">
+              <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Premium Features Section -->
+        <template x-if="isPremium">
+          <div class="p-4 sm:p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl shadow-xl border-2 border-purple-300">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a6 6 0 00-12 0v4a2 2 0 002 2z"></path>
+                </svg>
+              </div>
+              <h3 class="text-xl font-semibold text-purple-900">⭐ Premium Features</h3>
+            </div>
+            
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="bg-white rounded-lg p-4 border border-purple-200">
+                <h4 class="font-semibold text-slate-800 mb-2">Theme Selector</h4>
+                <div class="flex gap-2 flex-wrap">
+                  <button class="w-8 h-8 bg-blue-500 rounded-lg hover:scale-110 transition-transform" @click="changeTheme('blue')" title="Blue theme"></button>
+                  <button class="w-8 h-8 bg-purple-500 rounded-lg hover:scale-110 transition-transform" @click="changeTheme('purple')" title="Purple theme"></button>
+                  <button class="w-8 h-8 bg-pink-500 rounded-lg hover:scale-110 transition-transform" @click="changeTheme('pink')" title="Pink theme"></button>
+                  <button class="w-8 h-8 bg-green-500 rounded-lg hover:scale-110 transition-transform" @click="changeTheme('green')" title="Green theme"></button>
+                </div>
+              </div>
+              
+              <div class="bg-white rounded-lg p-4 border border-purple-200">
+                <h4 class="font-semibold text-slate-800 mb-2">Recover Streak</h4>
+                <button class="w-full px-4 py-2 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-all hover:scale-105" @click="recoverStreak()">
+                  Recover Missed Day
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+      </section>
+    </main>
+
+    <!-- Footer Nav -->
+    <footer class="sticky bottom-0 bg-white/90 backdrop-blur border-t border-slate-200 pb-[max(8px,var(--safe-bottom))]">
+      <div class="grid grid-cols-4 text-center">
+        <button class="py-3 transition-all duration-200 hover:scale-105 flex flex-col items-center" :class="activeTab==='Journal' ? 'text-sky-600' : 'text-slate-500'" @click="activeTab='Journal'">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+          </svg>
+          <span class="text-xs mt-1">Journal</span>
+        </button>
+        <button class="py-3 transition-all duration-200 hover:scale-105 flex flex-col items-center" :class="activeTab==='Spark' ? 'text-emerald-600' : 'text-slate-500'" @click="activeTab='Spark'">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+          </svg>
+          <span class="text-xs mt-1">Spark</span>
+        </button>
+        <button class="py-3 transition-all duration-200 hover:scale-105 flex flex-col items-center" :class="activeTab==='Progress' ? 'text-purple-600' : 'text-slate-500'" @click="activeTab='Progress'">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+          </svg>
+          <span class="text-xs mt-1">Progress</span>
+        </button>
+        <button class="py-3 transition-all duration-200 hover:scale-105 flex flex-col items-center" :class="activeTab==='Share' ? 'text-rose-600' : 'text-slate-500'" @click="activeTab='Share'">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
+          </svg>
+          <span class="text-xs mt-1">Share</span>
+        </button>
+      </div>
+    <!-- Premium Modal -->
+    <div x-show="showPremiumModal" x-transition:fade @click="showPremiumModal = false" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div @click.stop class="bg-white rounded-2xl shadow-2xl max-w-sm sm:max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-2xl font-bold text-slate-800">Premium Features</h3>
+            <button @click="showPremiumModal = false" class="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-3 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg border border-yellow-200">
+              <div class="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold text-slate-800">Year in Review</div>
+                <div class="text-sm text-slate-600">Generate comprehensive annual summaries</div>
+              </div>
+            </div>
+            
+            <div class="flex items-start gap-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+              <div class="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold text-slate-800">Custom Challenges</div>
+                <div class="text-sm text-slate-600">Create personalized spark challenges</div>
+              </div>
+            </div>
+            
+            <div class="flex items-start gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zM21 5a2 2 0 00-2-2h-4a2 2 0 00-2 2v12a4 4 0 004 4h4a2 2 0 002-2V5z"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="font-semibold text-slate-800">Advanced Themes</div>
+                <div class="text-sm text-slate-600">Unlock premium color schemes and layouts</div>
+              </div>
+            </div>
+          </div>
+          
+          <button class="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold hover:from-purple-600 hover:to-pink-600 transition-all hover:scale-105" @click="upgradeToPremium()">
+            Upgrade to Premium - $4.99/month
+          </button>
+        </div>
+      </div>
+    </div>
+
+  <!-- Firebase & App Scripts -->
+  <script src="/assets/js/firebase.js"></script>
+  <script src="/assets/js/ai.js"></script>
+  <script src="/assets/js/app.js"></script>
+  <script>
+    // Temporarily disabled to clear cache
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        // Unregister all service workers to clear old cache
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (let reg of registrations) {
+            reg.unregister();
+          }
+        });
+        // Re-register fresh
+        // navigator.serviceWorker.register('/service-worker.js');
+      });
+    }
+  </script>
+</body>
+</html>
