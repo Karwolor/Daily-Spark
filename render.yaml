@@ -3,11 +3,15 @@ services:
     name: dailyspark
     runtime: node
     plan: free
-    buildCommand: npm install
-    startCommand: node server.js
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
     envVars:
+      - key: NPM_CONFIG_PRODUCTION
+        value: false
+        scope: build
       - key: NODE_ENV
         value: production
+        scope: run
       - key: FIREBASE_API_KEY
         scope: run
       - key: FIREBASE_AUTH_DOMAIN
