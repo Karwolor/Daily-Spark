@@ -1,3 +1,4 @@
+https://daily-spark-33km.onrender.com/
 # DailySpark (MVP)
 
 A minimal PWA that merges a one-line daily diary (LifeLog) with 1‑minute daily challenges (MicroHabit).
